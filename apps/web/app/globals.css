@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 249 250 251;      /* gray-50 */
+    --foreground: 31 41 55;         /* gray-800 */
+    --card: 255 255 255;            /* white */
+    --card-foreground: 17 24 39;    /* gray-900 */
+    --border: 229 231 235;          /* gray-200 */
+    --input: 243 244 246;           /* gray-100 */
+    --ring: 99 102 241;             /* primary-500 */
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 3 7 18;
+    --foreground: 243 244 246;
+    --card: 17 24 39;
+    --card-foreground: 249 250 251;
+    --border: 31 41 55;
+    --input: 31 41 55;
+    --ring: 99 102 241;
+  }
+
+  * {
+    @apply border-gray-200;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-800 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Landing page base */
+  .landing-page {
+    background-color: #FAFAF8;
+    color: #0F0F0E;
+    font-family: var(--font-dm-sans), system-ui, sans-serif;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-gray-300;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

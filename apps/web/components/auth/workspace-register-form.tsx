@@ -40,7 +40,7 @@ export function WorkspaceRegisterForm() {
       if (result?.error) {
         toast.error(result.error)
       } else {
-        toast.success('Check your email for the 6-digit verification code.')
+        toast.success('Check your email for the verification code.')
         setStep('otp')
       }
     })
@@ -116,16 +116,16 @@ export function WorkspaceRegisterForm() {
     return (
       <form onSubmit={handleVerifyOtp} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-card space-y-4">
         <div className="text-center">
-          <p className="text-sm text-gray-600">Enter the 6-digit code sent to</p>
+          <p className="text-sm text-gray-600">Enter the verification code sent to</p>
           <p className="font-medium text-gray-900">{email}</p>
         </div>
         <Input
           label="Verification code"
           type="text"
           inputMode="numeric"
-          pattern="[0-9]{6}"
-          maxLength={6}
-          placeholder="000000"
+          pattern="[0-9]{6,8}"
+          maxLength={8}
+          placeholder="00000000"
           value={otp}
           onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
           required
@@ -133,7 +133,7 @@ export function WorkspaceRegisterForm() {
           className="text-center text-xl tracking-[0.3em]"
           disabled={isPending}
         />
-        <Button type="submit" className="w-full" disabled={isPending || otp.length !== 6}>
+        <Button type="submit" className="w-full" disabled={isPending || otp.length < 6}>
           {isPending ? <Loader2 className="animate-spin" /> : null}
           Continue
         </Button>

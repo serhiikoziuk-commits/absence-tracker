@@ -206,8 +206,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.custom_access_token_hook TO supabase_auth_admin;
-REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook FROM authenticated, anon, public;
+-- NOTE: Run these two lines separately in SQL Editor if needed (requires superuser):
+-- GRANT EXECUTE ON FUNCTION public.custom_access_token_hook TO supabase_auth_admin;
+-- REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook FROM authenticated, anon, public;
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -225,7 +226,7 @@ ALTER TABLE invites             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications       ENABLE ROW LEVEL SECURITY;
 
 -- Helper: current user's workspace_id from JWT
-CREATE OR REPLACE FUNCTION auth.workspace_id() RETURNS UUID AS $$
+CREATE OR REPLACE FUNCTION public.workspace_id() RETURNS UUID AS $$
   SELECT COALESCE(
     (auth.jwt() ->> 'workspace_id')::UUID,
     NULL
@@ -233,12 +234,12 @@ CREATE OR REPLACE FUNCTION auth.workspace_id() RETURNS UUID AS $$
 $$ LANGUAGE sql STABLE;
 
 -- Helper: current user's role from JWT
-CREATE OR REPLACE FUNCTION auth.user_role() RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION public.user_role() RETURNS TEXT AS $$
   SELECT COALESCE(auth.jwt() ->> 'role', 'user');
 $$ LANGUAGE sql STABLE;
 
 -- Helper: is current user a manager of the given user's team?
-CREATE OR REPLACE FUNCTION auth.is_manager_of(target_user_id UUID) RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION public.is_manager_of(target_user_id UUID) RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1
     FROM team_members mgr
@@ -251,14 +252,14 @@ $$ LANGUAGE sql STABLE;
 
 -- WORKSPACES
 CREATE POLICY "workspace_select" ON workspaces FOR SELECT
-  USING (id = auth.workspace_id());
+  USING (id = public.workspace_id());
 
 CREATE POLICY "workspace_update_admin" ON workspaces FOR UPDATE
-  USING (id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (id = public.workspace_id() AND public.user_role() = 'admin');
 
 -- USERS
 CREATE POLICY "users_select_same_workspace" ON users FOR SELECT
-  USING (workspace_id = auth.workspace_id());
+  USING (workspace_id = public.workspace_id());
 
 CREATE POLICY "users_insert_own" ON users FOR INSERT
   WITH CHECK (id = auth.uid());
@@ -267,81 +268,81 @@ CREATE POLICY "users_update_own" ON users FOR UPDATE
   USING (id = auth.uid());
 
 CREATE POLICY "users_update_admin" ON users FOR UPDATE
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 CREATE POLICY "users_delete_admin" ON users FOR DELETE
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 -- TEAMS
 CREATE POLICY "teams_select" ON teams FOR SELECT
-  USING (workspace_id = auth.workspace_id());
+  USING (workspace_id = public.workspace_id());
 
 CREATE POLICY "teams_insert_admin" ON teams FOR INSERT
-  WITH CHECK (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  WITH CHECK (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 CREATE POLICY "teams_update_admin" ON teams FOR UPDATE
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 CREATE POLICY "teams_delete_admin" ON teams FOR DELETE
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 -- TEAM MEMBERS
 CREATE POLICY "team_members_select" ON team_members FOR SELECT
   USING (EXISTS (
-    SELECT 1 FROM teams t WHERE t.id = team_id AND t.workspace_id = auth.workspace_id()
+    SELECT 1 FROM teams t WHERE t.id = team_id AND t.workspace_id = public.workspace_id()
   ));
 
 CREATE POLICY "team_members_manage_admin" ON team_members FOR ALL
   USING (EXISTS (
-    SELECT 1 FROM teams t WHERE t.id = team_id AND t.workspace_id = auth.workspace_id()
-    AND auth.user_role() = 'admin'
+    SELECT 1 FROM teams t WHERE t.id = team_id AND t.workspace_id = public.workspace_id()
+    AND public.user_role() = 'admin'
   ));
 
 -- ABSENCE TYPES
 CREATE POLICY "absence_types_select" ON absence_types FOR SELECT
-  USING (workspace_id = auth.workspace_id());
+  USING (workspace_id = public.workspace_id());
 
 CREATE POLICY "absence_types_manage_admin" ON absence_types FOR ALL
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 -- ABSENCE BALANCES
 CREATE POLICY "balances_select_own" ON absence_balances FOR SELECT
   USING (
     user_id = auth.uid()
-    OR auth.user_role() = 'admin'
-    OR auth.is_manager_of(user_id)
+    OR public.user_role() = 'admin'
+    OR public.is_manager_of(user_id)
   );
 
 CREATE POLICY "balances_manage_admin" ON absence_balances FOR ALL
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 -- ABSENCE REQUESTS
 CREATE POLICY "requests_select" ON absence_requests FOR SELECT
   USING (
-    workspace_id = auth.workspace_id()
+    workspace_id = public.workspace_id()
     AND (
       user_id = auth.uid()
-      OR auth.user_role() = 'admin'
-      OR auth.is_manager_of(user_id)
+      OR public.user_role() = 'admin'
+      OR public.is_manager_of(user_id)
     )
   );
 
 CREATE POLICY "requests_insert_own" ON absence_requests FOR INSERT
-  WITH CHECK (workspace_id = auth.workspace_id() AND user_id = auth.uid());
+  WITH CHECK (workspace_id = public.workspace_id() AND user_id = auth.uid());
 
 CREATE POLICY "requests_update_own_pending" ON absence_requests FOR UPDATE
   USING (user_id = auth.uid() AND status IN ('pending','modified'));
 
 CREATE POLICY "requests_update_manager" ON absence_requests FOR UPDATE
   USING (
-    workspace_id = auth.workspace_id()
-    AND (auth.user_role() = 'admin' OR auth.is_manager_of(user_id))
+    workspace_id = public.workspace_id()
+    AND (public.user_role() = 'admin' OR public.is_manager_of(user_id))
   );
 
 CREATE POLICY "requests_delete" ON absence_requests FOR DELETE
   USING (
     (user_id = auth.uid() AND status = 'pending')
-    OR (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin')
+    OR (workspace_id = public.workspace_id() AND public.user_role() = 'admin')
   );
 
 -- ABSENCE REQUEST FILES
@@ -349,7 +350,7 @@ CREATE POLICY "files_select" ON absence_request_files FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM absence_requests r
     WHERE r.id = request_id
-      AND (r.user_id = auth.uid() OR auth.user_role() = 'admin' OR auth.is_manager_of(r.user_id))
+      AND (r.user_id = auth.uid() OR public.user_role() = 'admin' OR public.is_manager_of(r.user_id))
   ));
 
 CREATE POLICY "files_insert_own" ON absence_request_files FOR INSERT
@@ -366,16 +367,16 @@ CREATE POLICY "files_delete_own" ON absence_request_files FOR DELETE
 
 -- INVITES
 CREATE POLICY "invites_select_admin" ON invites FOR SELECT
-  USING (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  USING (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 CREATE POLICY "invites_select_by_token" ON invites FOR SELECT
   USING (true); -- public read by token for acceptance flow (filtered in app layer)
 
 CREATE POLICY "invites_insert_admin" ON invites FOR INSERT
-  WITH CHECK (workspace_id = auth.workspace_id() AND auth.user_role() = 'admin');
+  WITH CHECK (workspace_id = public.workspace_id() AND public.user_role() = 'admin');
 
 CREATE POLICY "invites_update" ON invites FOR UPDATE
-  USING (workspace_id = auth.workspace_id());
+  USING (workspace_id = public.workspace_id());
 
 -- NOTIFICATIONS
 CREATE POLICY "notifications_select_own" ON notifications FOR SELECT
@@ -385,7 +386,7 @@ CREATE POLICY "notifications_update_own" ON notifications FOR UPDATE
   USING (user_id = auth.uid());
 
 CREATE POLICY "notifications_insert_system" ON notifications FOR INSERT
-  WITH CHECK (workspace_id = auth.workspace_id());
+  WITH CHECK (workspace_id = public.workspace_id());
 
 -- ============================================================
 -- STORAGE BUCKETS (run separately in Storage settings or via API)

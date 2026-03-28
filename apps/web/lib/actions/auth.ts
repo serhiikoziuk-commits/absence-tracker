@@ -65,7 +65,7 @@ export async function verifyOtp(email: string, token: string, workspaceSlug: str
   redirect(`/${workspaceSlug}/dashboard`)
 }
 
-// ── Register Workspace (first admin) ─────────────────────────────────────────
+// ── Register Workspace (step 1: validate + send OTP only, no DB writes) ───────
 export async function registerWorkspace(formData: FormData) {
   const companyName = formData.get('company_name') as string
   const email = formData.get('email') as string
@@ -74,11 +74,10 @@ export async function registerWorkspace(formData: FormData) {
 
   if (!companyName || !email || !slug) return { error: 'All fields are required.' }
 
-  // Use admin client for DB writes (user is not authenticated yet — anon key blocked by RLS)
   const admin = createAdminClient()
   const supabase = await createClient()
 
-  // Check slug uniqueness
+  // Check slug uniqueness before sending OTP
   const { data: existing } = await admin
     .from('workspaces')
     .select('id')
@@ -87,10 +86,49 @@ export async function registerWorkspace(formData: FormData) {
 
   if (existing) return { error: 'This workspace URL is already taken. Please choose another.' }
 
+  // Only send OTP — workspace is created after email is verified
+  const { error: otpError } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true },
+  })
+
+  if (otpError) return { error: otpError.message }
+
+  return { success: true, slug, email }
+}
+
+// ── Complete Registration (step 2: verify OTP then create workspace + user) ───
+export async function completeRegistration(
+  workspaceSlug: string,
+  workspaceName: string,
+  email: string,
+  token: string,
+  firstName: string,
+  lastName: string
+) {
+  const admin = createAdminClient()
+  const supabase = await createClient()
+
+  // Verify OTP first
+  const { error: verifyError } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+  if (verifyError) return { error: 'Invalid or expired code.' }
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Authentication failed.' }
+
+  // Re-check slug uniqueness (in case someone grabbed it during OTP window)
+  const { data: existing } = await admin
+    .from('workspaces')
+    .select('id')
+    .eq('slug', workspaceSlug)
+    .single()
+
+  if (existing) return { error: 'This workspace URL was just taken. Please go back and choose another.' }
+
   // Create workspace
   const { data: workspace, error: wsError } = await admin
     .from('workspaces')
-    .insert({ slug, name: companyName })
+    .insert({ slug: workspaceSlug, name: workspaceName })
     .select()
     .single()
 
@@ -99,46 +137,8 @@ export async function registerWorkspace(formData: FormData) {
   // Seed default absence types
   await admin.rpc('seed_default_absence_types', { p_workspace_id: workspace.id })
 
-  // Sign up the user via OTP (creates auth.users entry)
-  const { error: otpError } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      shouldCreateUser: true,
-      data: { workspace_id: workspace.id, role: 'admin' },
-    },
-  })
-
-  if (otpError) return { error: otpError.message }
-
-  return { success: true, slug, email }
-}
-
-// ── Complete Registration after OTP (admin) ───────────────────────────────────
-export async function completeRegistration(
-  workspaceSlug: string,
-  email: string,
-  token: string,
-  firstName: string,
-  lastName: string
-) {
-  const supabase = await createClient()
-
-  const { error: verifyError } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
-  if (verifyError) return { error: 'Invalid or expired code.' }
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Authentication failed.' }
-
-  const { data: workspace } = await supabase
-    .from('workspaces')
-    .select('id')
-    .eq('slug', workspaceSlug)
-    .single()
-
-  if (!workspace) return { error: 'Workspace not found.' }
-
-  // Insert user record
-  const { error: userError } = await supabase.from('users').upsert({
+  // Create user record (admin client bypasses RLS for initial insert)
+  const { error: userError } = await admin.from('users').insert({
     id: user.id,
     workspace_id: workspace.id,
     email,
@@ -150,15 +150,15 @@ export async function completeRegistration(
 
   if (userError) return { error: userError.message }
 
-  // Create initial balances from absence types
-  const { data: types } = await supabase
+  // Create initial balances
+  const { data: types } = await admin
     .from('absence_types')
     .select('id, default_days')
     .eq('workspace_id', workspace.id)
 
   if (types && types.length > 0) {
     const year = new Date().getFullYear()
-    await supabase.from('absence_balances').insert(
+    await admin.from('absence_balances').insert(
       types.map((t) => ({
         workspace_id: workspace.id,
         user_id: user.id,

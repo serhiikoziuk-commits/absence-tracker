@@ -57,7 +57,7 @@ export function WorkspaceRegisterForm() {
   function handleCompleteProfile(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
-      const result = await completeRegistration(slug, email, otp, firstName, lastName)
+      const result = await completeRegistration(slug, companyName, email, otp, firstName, lastName)
       if (result?.error) {
         toast.error(result.error)
         setStep('otp')

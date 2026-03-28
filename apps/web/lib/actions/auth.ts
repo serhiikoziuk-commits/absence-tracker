@@ -1,7 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { slugify } from '@/lib/utils'
 
 // ── Send OTP ──────────────────────────────────────────────────────────────────
@@ -74,10 +74,12 @@ export async function registerWorkspace(formData: FormData) {
 
   if (!companyName || !email || !slug) return { error: 'All fields are required.' }
 
+  // Use admin client for DB writes (user is not authenticated yet — anon key blocked by RLS)
+  const admin = createAdminClient()
   const supabase = await createClient()
 
   // Check slug uniqueness
-  const { data: existing } = await supabase
+  const { data: existing } = await admin
     .from('workspaces')
     .select('id')
     .eq('slug', slug)
@@ -86,7 +88,7 @@ export async function registerWorkspace(formData: FormData) {
   if (existing) return { error: 'This workspace URL is already taken. Please choose another.' }
 
   // Create workspace
-  const { data: workspace, error: wsError } = await supabase
+  const { data: workspace, error: wsError } = await admin
     .from('workspaces')
     .insert({ slug, name: companyName })
     .select()
@@ -95,7 +97,7 @@ export async function registerWorkspace(formData: FormData) {
   if (wsError || !workspace) return { error: 'Failed to create workspace.' }
 
   // Seed default absence types
-  await supabase.rpc('seed_default_absence_types', { p_workspace_id: workspace.id })
+  await admin.rpc('seed_default_absence_types', { p_workspace_id: workspace.id })
 
   // Sign up the user via OTP (creates auth.users entry)
   const { error: otpError } = await supabase.auth.signInWithOtp({
